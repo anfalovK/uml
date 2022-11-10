@@ -1,0 +1,155 @@
+@startuml
+header Общая интеграционная схема (БС-01): <b>System Prod
+'Указать № интеграционного сценария и название системы
+'http://www.plantuml.com/
+
+skinparam Default {
+FontName Calibri
+FontSize 13
+MonospacedFontName Consolas
+}
+skinparam TitleFontSize 20
+skinparam TitleFontStyle plain
+
+participant "Клиент" as Client
+
+participant "System" as Consumer
+participant "БД\Redis" as Redis
+participant "Кеш" as KK
+participant "Шлюз" as GW_Service
+
+participant "KAFKA/AMQ" as AMQ
+participant "Внешняя система" as Ext_System
+
+
+box "Системы Company DMZ" #LightBlue
+participant Consumer
+participant KK
+participant Library
+participant Redis
+end box
+
+box "Системы Company LAN" #LightGreen
+
+participant AMQ
+participant MS
+participant RTDM
+participant GW_Service
+end box
+
+box "Внешние системы" #LightBlue
+participant Ext_System
+end box
+
+'\\\\\\\ Начало Описать пред условия. Система инициатор или сценарий\\\\\\\ 
+activate Client
+opt #AliceBlue Заполнение формы пред расчёта
+ref over Client, Consumer, RTDM
+ БС-04: Предварительный расчет услуги
+end ref
+end
+ref over Client, Consumer, KK 
+ БС-ЛК-01: Авторизация в ЛКК
+end ref
+
+
+activate Consumer
+autonumber "<b>[00]"
+== ШАГ 1 Уточнение данных услуги==
+
+opt #AliceBlue БС-01.1 Есть предыдущая услуга
+ ref over Client, Consumer, KK  
+ ПС-07: Выбор услуги на продление или ввод в ручную 
+ end ref
+ 
+ ref over Consumer, KK, MS  
+ ИС-24: GetContracts - Загрузка цепочки  услуги (Policychain)
+ end ref
+ 
+Consumer->Consumer: Полис не найден в БД
+
+ref over Consumer, KK, MS 
+ ИС-25.1: FindPolicy - Получение xml договора из MS
+end ref
+
+opt #AliceBlue Полис не найден в БД MS или произошла ошибка загрузки
+ Consumer->Consumer: Полис не найден в БД MS или произошла ошибка загрузки
+ ref over Client, Consumer, AMQ, GW_Service
+  ИС-29: findPolicyByBso Загрузка услуги
+ end ref
+
+else Загрузка данных черновика US-01.03 
+Consumer->Redis: Запрос сохраненного черновика
+end
+opt #AliceBlue Загружены данные пролонгации\черновика
+Consumer->Consumer: Заполнение\корректировка форм услуги
+Consumer->Client--: Update
+end
+
+end
+
+
+== Проверки по блокам в ИМ==
+ref over Client, Consumer 
+ ПС-01: Ввод данных\проверка подгруженного - страхователь
+end ref
+opt #AliceBlue в ЛК нет подтвержденной почты
+ref over Client, Consumer, KK  
+ ПС-02: Подтверждение почты в ЛКК(бесшовный) ИС-30 Отправка email подтверждения
+end ref
+end
+Client->Consumer++: Update
+Consumer->Redis: Обновление сохраненного черновика
+opt #AliceBlue В ЛК не было заполненных данных (ФИО\паспорт клиента)
+Consumer->KK: Обновление ЛКК
+end
+Consumer->Client--: Update
+
+'ref over Client, Consumer 
+' ИС-09: Проверка клиента
+'end ref
+ref over Client, Consumer 
+ ПС-03: Ввод данных\проверка подгруженного - клиента
+end ref
+Client->Consumer++: Update
+'ref over Client, Consumer  
+ 'ИС-07: Проверка клиента
+'end ref
+Consumer->Redis: Обновление сохраненного черновика
+Consumer->Client--: Update
+opt #AliceBlue Введен номер и нажата кнопка Отправить
+ref over Client, Consumer, Autocode 
+ ИС-31: Взаимодействие с Автокодом 
+end ref
+Consumer->Client--: Update
+end
+ref over Client, Consumer 
+ ПС-04: Ввод данных\проверка клиента
+end ref
+Client->Consumer++: Update
+'ref over Client, Consumer
+ 'ИС-06:  Проверка ТС
+'end ref
+Consumer->Redis: Обновление сохраненного черновика
+Consumer->Client--: Update
+opt #AliceBlue Ограниченный список услуг
+ref over Client, Consumer
+ ПС-06: Ввод данных\проверка подгруженных - клиентов
+end ref
+Client->Consumer++: Update
+ref over Consumer, AMQ, Ext_System 
+ИС-05: Расчёт ХХХ в внешней системе
+end ref
+Consumer->Redis: Обновление сохраненного черновика
+Consumer->Client--: Update
+end
+== Проверки по блокам в ИМ выполнены==
+ref over Client, Consumer,  AMQ, RTDM  
+ ИС-20: Получение расчета премии
+end ref
+Client->Client: Все блоки проверены и нажата кнопка Продолжить Оформление
+Client->Consumer++: Check
+... переход на 2 ШАГ...
+
+== ШАГ 2. Оформление услуги==
+@enduml

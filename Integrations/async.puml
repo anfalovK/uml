@@ -1,0 +1,140 @@
+@startuml
+header Асинхронная Интеграция (ИС-00): <b>Company Prod - (Система) 
+'Указать № интеграционного сценария и название системы
+'http://www.plantuml.com/
+
+skinparam Default {
+FontName Calibri
+FontSize 13
+MonospacedFontName Consolas
+}
+skinparam TitleFontSize 20
+skinparam TitleFontStyle plain
+
+participant "Клиент" as Client
+
+participant "Company" as Consumer
+' Название ИМ может быть заменено на другую Фрон Систему
+participant "ИМ Worker/Redis" as Worker
+' Название воркера может быть скорректировано
+participant "Очередь запроса (IN)" as AMQ_In_Queue
+' Название Исходящего Топика/Очереди
+participant "Очередь ответа(OUT)" as AMQ_Out_Queue
+' Название Входящего Топика/Очереди
+participant "Система Company" as Company
+' Название внутренней системы
+participant "Внешняя Система" as ExternalSystem
+' Название внешней системы
+
+
+
+box "Системы Company DMZ" #LightBlue
+participant Consumer
+participant Worker
+end box
+
+box "Системы Company LAN" #LightGreen
+participant AMQ_In_Queue
+participant AMQ_Out_Queue
+participant Company
+end box
+
+participant ExternalSystem
+
+
+'\\\\\\\Начало Если не используется воркер удалить\\\\\\\ 
+activate Worker
+Worker --> Worker : async_consumer название воркера
+
+
+
+'\\\\\\\Конец Если не используется воркер удалить\\\\\\\ 
+
+
+'\\\\\\\ Начало Описать пред условия. Система инициатор или сценарий\\\\\\\ 
+activate Client
+
+ref over Client, Consumer 
+ ИС-00: Предыдущий сценарий
+end ref
+
+'\\\\\\\Конец Описать пред условия.\\\\\\\ 
+
+
+activate Consumer
+autonumber "<b>[00]"
+Consumer-> AMQ_In_Queue: <b>success_request_01 (TicketId,MSG) (INFO)
+activate AMQ_In_Queue
+Consumer-> Worker: Создание записи вызова в Redis (TicketId,TTL,Timestamp)
+
+AMQ_In_Queue -->Consumer : <b>success_response_02 (INFO)
+
+opt Блок обработки технических ошибок: Не удалось отправить сообщение
+activate Consumer
+AMQ_In_Queue -->Consumer : <b><i>failed_request_03 (CRITICAL)
+
+destroy Consumer
+end
+
+Consumer -->Worker: Проверка таймаута записи (TicketId)
+Worker-->Consumer: Ответ проверки таймаута
+opt Блок обработки технических ошибок: Превышено стандартное время ответа
+activate Consumer
+
+Consumer -->Consumer: <b>long_response_timeout_06  (WARNING)
+else Блок обработки технических ошибок: Истекло время ожидания ответа
+Consumer -->Consumer: <b><i>timeout_05 (ERROR)
+' Время общего Time-Out
+destroy Consumer
+end
+
+Company-> Company : Обработчик сообщений
+activate Company
+Company-> AMQ_In_Queue : Вычитывание сообщений
+' Сервис проверяет наличие сообщения в очереди
+AMQ_In_Queue -> Company: Ответ
+' Сервис обрабатывает сообщение из очереди
+deactivate AMQ_In_Queue
+
+Company-> ExternalSystem: Запрос во внешнюю систему
+activate ExternalSystem
+ExternalSystem --> Company: Ответ
+Company-> Company: Валидация\обработка\таймаут ответа
+deactivate ExternalSystem
+
+
+
+
+Company-> AMQ_Out_Queue: Ответ
+deactivate Company
+activate AMQ_Out_Queue
+
+Worker-> AMQ_Out_Queue: worker_heart_beat 
+AMQ_Out_Queue-> Worker: worker_heart_beat OK
+opt Блок обработки технических ошибок: Ошибка Heartbeat 
+Worker-> Worker: <b>worker_heart_beat_error_21 (ERROR)
+else Не обработанное исключение воркера
+Worker-> Worker: <b>worker_uncaught_exception_22 (ERROR)
+end
+
+Worker-> AMQ_Out_Queue: Запрос новых сообщений
+AMQ_Out_Queue-> Worker: Ответ
+deactivate AMQ_Out_Queue
+opt Блок обработки технических ошибок: Не удалось прочитать сообщения
+Worker-> Worker: <b>worker_read_connection_error_23 (ERROR)
+end
+
+
+
+Consumer-> Worker: Проверка ответа для записи (TicketId)
+Worker-> Consumer: Ответ async_response_07
+activate Consumer
+opt Блок обработки технических ошибок: Получен не корректный ответ или ответ с ошибками
+Consumer->X Consumer:<b><i>bad_response_04 (ERROR)
+else  Блок обработки технических ошибок: Не обработанное исключение
+Consumer->X Consumer:<b><i>uncaught_exception_08 (CRITICAL)
+
+destroy Consumer
+end
+deactivate Consumer
+@enduml

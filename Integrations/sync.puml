@@ -1,0 +1,96 @@
+@startuml
+header Синхронная Интеграция ESB (ИС-00): <b>System Prod - (Система) 
+'Указать № интеграционного сценария и название системы
+'http://www.plantuml.com/
+
+skinparam Default {
+FontName Calibri
+FontSize 13
+MonospacedFontName Consolas
+}
+skinparam TitleFontSize 20
+skinparam TitleFontStyle plain
+
+participant "Клиент" as Client
+
+participant "System" as Consumer
+' Название ИМ может быть заменено на другую Фрон Систему
+participant "ESB" as ESB
+' Название Исходящего Топика/Очереди
+participant "Очередь ответа(OUT)" as ESB
+' Название Входящего Топика/Очереди
+participant "Система Company" as System
+' Название внутренней системы
+participant "Внешняя Система" as ExternalSystem
+' Название внешней системы
+
+
+
+box "Системы Company DMZ" #LightBlue
+participant Consumer
+end box
+
+box "Системы Company LAN" #LightGreen
+participant ESB
+participant System
+end box
+
+participant ExternalSystem
+
+
+
+'\\\\\\\ Начало Описать пред условия. Система инициатор или сценарий\\\\\\\ 
+activate Client
+
+ref over Client, Consumer 
+ ИС-00: Предыдущий сценарий
+end ref
+
+'\\\\\\\Конец Описать пред условия.\\\\\\\ 
+
+
+activate Consumer
+autonumber "<b>[00]"
+Consumer-> ESB: <b>success_request_01 (TicketId,MSG) (INFO)
+activate ESB
+
+Consumer -->Consumer: Проверка таймаута записи (TicketId)
+opt Блок обработки технических ошибок: Превышено стандартное время ответа
+activate Consumer
+
+Consumer -->Consumer: <b>long_response_timeout_06  (WARNING)
+else Блок обработки технических ошибок: Истекло время ожидания ответа
+Consumer -->Consumer: <b><i>timeout_05 (ERROR)
+' Время общего Time-Out
+destroy Consumer
+end
+
+ESB-> System : Передача сообщений
+activate System
+
+System-> ExternalSystem: Запрос во внешнюю систему
+activate ExternalSystem
+ExternalSystem --> System: Ответ
+System-> System: Валидация\обработка\таймаут ответа
+deactivate ExternalSystem
+
+
+
+
+System-> ESB: Ответ
+deactivate System
+activate ESB
+
+
+ESB -->Consumer : <b>success_response_02 (INFO)
+
+
+opt Блок обработки технических ошибок: Получен не корректный ответ или ответ с ошибками
+Consumer->X Consumer:<b><i>bad_response_04 (ERROR)
+else  Блок обработки технических ошибок: Не обработанное исключение
+Consumer->X Consumer:<b><i>uncaught_exception_08 (CRITICAL)
+
+destroy Consumer
+end
+deactivate Consumer
+@enduml
