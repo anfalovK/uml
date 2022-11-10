@@ -118,8 +118,8 @@ Client->Consumer++: Update
 Consumer->Redis: Обновление сохраненного черновика
 Consumer->Client--: Update
 opt #AliceBlue Введен номер и нажата кнопка Отправить
-ref over Client, Consumer, Autocode 
- ИС-31: Взаимодействие с Автокодом 
+ref over Client, Consumer, Library
+ ИС-31: Взаимодействие с Библиотекой 
 end ref
 Consumer->Client--: Update
 end
